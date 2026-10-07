@@ -1,4 +1,4 @@
-# Boda Sofi & Santi 💍
+# afterlife-wedding 💍
 
 **[Español](#español) · [English](#english)**
 
