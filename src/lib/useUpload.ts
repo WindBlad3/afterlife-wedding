@@ -39,10 +39,16 @@ async function prepare(file: File): Promise<File | string> {
   return (await compress(file)) ?? `${file.name}: no se pudo procesar la foto. Probá con otra.`;
 }
 
+// Retries (up to 3 attempts) only when the connection or server hiccups; real rejections (4xx, 507 full) fail at once.
 async function send(file: File): Promise<string | null> {
   const body = new FormData();
   body.append('file', file);
-  const res = await fetch('/api/upload', { method: 'POST', body }).catch(() => null);
+  let res: Response | null = null;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    if (attempt) await new Promise(r => setTimeout(r, 2000 * attempt));
+    res = await fetch('/api/upload', { method: 'POST', body }).catch(() => null);
+    if (res && (res.status < 500 || res.status === 507)) break;
+  }
   if (res?.ok) return null;
   return (await res?.json().catch(() => null))?.error ?? 'error de conexión';
 }
@@ -67,7 +73,9 @@ export function useUpload() {
     discard();
     setStatus(null);
     setPreparing(true);
-    const results = await Promise.all(files.map(prepare));
+    // One at a time: decoding many full-size photos at once can run a phone out of memory.
+    const results: (File | string)[] = [];
+    for (const file of files) results.push(await prepare(file));
     setPreparing(false);
     setPending(results.filter((r): r is File => typeof r !== 'string').map(file => ({ file, url: URL.createObjectURL(file) })));
     setRejected(results.filter((r): r is string => typeof r === 'string'));
